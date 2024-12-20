@@ -17,7 +17,6 @@ function Configure-Console {
     $Host.UI.RawUI.BackgroundColor = "Black"
     $Host.UI.RawUI.ForegroundColor = "White"
 
-    # Existing window size and position code (if any)
     try {
         $newWidth = 120
         $newHeight = 50
@@ -27,35 +26,7 @@ function Configure-Console {
         Write-Host "Unable to set window size. Continuing with default size."
     }
 
-    # try {
-#     $newWidth = 120
-#     $newHeight = 50
-#     $Host.UI.RawUI.WindowSize = New-Object System.Management.Automation.Host.Size($newWidth, $newHeight)
-#     $Host.UI.RawUI.BufferSize = New-Object System.Management.Automation.Host.Size($newWidth, $newHeight)
-# } catch {
-#     Write-Host "Unable to set window size. Continuing with default size."
-# }
-
-# try {
-#     Add-Type @"
-#     using System;
-#     using System.Runtime.InteropServices;
-#     public class Win32 {
-#         [DllImport("user32.dll")]
-#         public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
-#     }
-# "@
-#     $hwnd = (Get-Process -Id $PID).MainWindowHandle
-#     $SWP_NOSIZE = 0x0001
-#     $SWP_NOZORDER = 0x0004
-#     $X = 100
-#     $Y = 100
-#     [Win32]::SetWindowPos($hwnd, [IntPtr]::Zero, $X, $Y, 0, 0, $SWP_NOSIZE -bor $SWP_NOZORDER) | Out-Null
-# } catch {
-#     Write-Host "Unable to set window position. Continuing without repositioning."
-# }
-
-    # **Add the Following Code to Maximize the Window**
+    # Maximize the console window if possible
     try {
         Add-Type @"
         using System;
@@ -142,7 +113,7 @@ function Start-Task {
     Remove-Job $job | Out-Null
 
     # Overwrite the spinner with "Done." aligned
-    Write-Host "$paddedMessage Done."
+    Write-Host "$paddedMessage Done"
 }
 
 # Function to get free disk space on C: drive
@@ -188,7 +159,7 @@ function Cleanup-Task {
                 try {
                     Remove-Item -Path $expandedPath -Recurse -Force -ErrorAction SilentlyContinue
                 } catch {
-                    # Suppress errors to maintain minimalistic output
+                    # Suppress errors
                 }
             }
         }
@@ -228,20 +199,6 @@ function Clear-EventLogsComprehensively {
 function Clear-DNSCacheCustom {
     Start-Task -Message "> Clearing DNS Cache..." -Task {
         ipconfig /flushdns | Out-Null
-    }
-}
-
-# Function to stop and start specific services
-function Stop-Start-Services {
-    Start-Task -Message "> Restarting Windows Update Services..." -Task {
-        $services = @("wuauserv", "bits")
-        foreach ($service in $services) {
-            try {
-                Restart-Service -Name $service -Force -ErrorAction SilentlyContinue
-            } catch {
-                # Suppress errors
-            }
-        }
     }
 }
 
@@ -333,11 +290,24 @@ function Remove-WindowsUpdateCache {
     }
 }
 
-# Function to clean up the WinSxS folder using DISM
+# Function to clean up the WinSxS folder using DISM (basic)
 function Clean-WinSxS {
     Start-Task -Message "> Cleaning WinSxS Folder..." -Task {
         try {
             DISM.exe /Online /Cleanup-Image /StartComponentCleanup /Quiet /NoRestart | Out-Null
+        } catch {
+            # Suppress errors
+        }
+    }
+}
+
+# **New function for advanced DISM cleanup tasks requested by the user**
+function Advanced-DISM-Cleanup {
+    Start-Task -Message "> Running Advanced DISM Cleanup..." -Task {
+        try {
+            DISM.exe /online /Cleanup-Image /StartComponentCleanup | Out-Null
+            DISM.exe /online /Cleanup-Image /StartComponentCleanup /ResetBase | Out-Null
+            DISM.exe /online /Cleanup-Image /SPSuperseded | Out-Null
         } catch {
             # Suppress errors
         }
@@ -426,13 +396,8 @@ function Delete-TempFilesAllUsers {
 function Clear-WindowsStoreCache {
     Start-Task -Message "> Clearing Windows Store Cache..." -Task {
         try {
-            # Define the Windows Store cache path
             $storeCachePath = "$env:LocalAppData\Packages\Microsoft.WindowsStore_8wekyb3d8bbwe\LocalCache\*"
-
-            # Ensure the Store is not running
             Get-Process -Name "WinStore.App.exe" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-
-            # Delete the cache files
             Remove-Item -Path $storeCachePath -Recurse -Force -ErrorAction SilentlyContinue
         } catch {
             # Suppress errors
@@ -471,6 +436,131 @@ function Remove-WindowsBackupFiles {
     }
 }
 
+# Additional function to remove upgrade folders like $Windows.~BT and $Windows.~WS
+function Remove-UpgradeFolders {
+    Start-Task -Message "> Removing Windows Upgrade Folders..." -Task {
+        try {
+            Remove-Item -Path "C:\$Windows.~BT\*" -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path "C:\$Windows.~WS\*" -Recurse -Force -ErrorAction SilentlyContinue
+        } catch {
+            # Suppress errors
+        }
+    }
+}
+
+# Function to clear WER (Windows Error Reporting) Report Queues and Archives
+function Clear-WERReports {
+    Start-Task -Message "> Clearing Windows Error Reporting Queues and Archives..." -Task {
+        try {
+            $werPaths = @(
+                "$env:ProgramData\Microsoft\Windows\WER\ReportQueue\*",
+                "$env:ProgramData\Microsoft\Windows\WER\ReportArchive\*",
+                "$env:ProgramData\Microsoft\Windows\WER\Temp\*"
+            )
+            foreach ($path in $werPaths) {
+                Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        } catch {
+            # Suppress errors
+        }
+    }
+}
+
+# Function to clear various environment temp folders
+function Clear-EnvTempFolders {
+    Start-Task -Message "> Clearing Environment Temp Folders..." -Task {
+        try {
+            $tempPaths = @(
+                "$env:TEMP\*",
+                "$env:TMP\*",
+                "%TEMP%\*",
+                "%TMP%\*",
+                "$env:windir\Temp\*",
+                "$env:LOCALAPPDATA\Temp\*",
+                "$env:USERPROFILE\AppData\Local\Temp\*"
+            )
+
+            foreach ($temp in $tempPaths) {
+                $expanded = [Environment]::ExpandEnvironmentVariables($temp)
+                if (Test-Path $expanded) {
+                    Remove-Item -Path $expanded -Recurse -Force -ErrorAction SilentlyContinue
+                }
+            }
+        } catch {
+            # Suppress errors
+        }
+    }
+}
+
+# Extra cleanup pass
+function Extra-BinCleanup {
+    Start-Task -Message "> Extra Cleanup for System Directories..." -Task {
+        try {
+            Remove-Item -Path "$env:windir\Prefetch\*" -Recurse -Force -ErrorAction SilentlyContinue
+        } catch {
+            # Suppress errors
+        }
+    }
+}
+
+# Function to clear memory dump files
+function Clear-MemoryDumpFiles {
+    Start-Task -Message "> Clearing Memory Dump Files..." -Task {
+        try {
+            $dumpPaths = @(
+                "$env:windir\Minidump\*",
+                "$env:windir\Memory.dmp"
+            )
+            foreach ($path in $dumpPaths) {
+                Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        } catch {
+            # Suppress errors
+        }
+    }
+}
+
+# Function to clean up installed application leftovers
+function Clean-Up-InstalledApplicationLeftovers {
+    Start-Task -Message "> Cleaning Up Installed Application Leftovers..." -Task {
+        try {
+            $appPaths = @(
+                "$env:ProgramFiles\*\AppData",
+                "$env:ProgramFiles(x86)\*\AppData"
+            )
+            foreach ($path in $appPaths) {
+                Get-ChildItem -Path $path -Directory -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+                    Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+                }
+            }
+        } catch {
+            # Suppress errors
+        }
+    }
+}
+
+# Function to clear shadow copies
+function Clear-ShadowCopies {
+    Start-Task -Message "> Clearing Shadow Copies..." -Task {
+        try {
+            vssadmin delete shadows /all /quiet | Out-Null
+        } catch {
+            # Suppress errors
+        }
+    }
+}
+
+# Function to remove hibernation and delete hiberfil.sys
+function Remove-Hibernation {
+    Start-Task -Message "> Removing Hibernation..." -Task {
+        try {
+            powercfg -h off | Out-Null
+        } catch {
+            # Suppress errors
+        }
+    }
+}
+
 # Function to delete specific file types across system directories
 function Delete-SpecificFileTypes {
     Start-Task -Message "> Deleting Specific File Types..." -Task {
@@ -483,14 +573,14 @@ function Delete-SpecificFileTypes {
                 "$env:AppData\temp\*",
                 "$env:HomePath\AppData\LocalLow\Temp\*",
                 "$env:windir\*.bak",
-                "$env:windir\Prefetch\*",
                 "$env:userprofile\cookies\*",
                 "$env:userprofile\recent\*",
                 "$env:WinDir\System32\energy-report.html"
             )
             foreach ($path in $searchPaths) {
                 foreach ($pattern in $filePatterns) {
-                    Remove-Item -Path "$path\$pattern" -Recurse -Force -ErrorAction SilentlyContinue
+                    $expanded = [Environment]::ExpandEnvironmentVariables($path)
+                    Remove-Item -Path "$expanded\$pattern" -Recurse -Force -ErrorAction SilentlyContinue
                 }
             }
         } catch {
@@ -506,14 +596,15 @@ function Delete-SpecificFolders {
             $foldersToDelete = @(
                 "$env:windir\Temp",
                 "$env:windir\Prefetch",
-                "$env:Temp",
+                "$env:TEMP",
                 "$env:AppData\Temp",
                 "$env:AppData\LocalLow\Temp",
                 "$env:AppData\Local\Microsoft\Windows\Caches"
             )
             foreach ($folder in $foldersToDelete) {
-                if (Test-Path $folder) {
-                    Remove-Item -Path $folder -Recurse -Force -ErrorAction SilentlyContinue
+                $expandedFolder = [Environment]::ExpandEnvironmentVariables($folder)
+                if (Test-Path $expandedFolder) {
+                    Remove-Item -Path $expandedFolder -Recurse -Force -ErrorAction SilentlyContinue
                 }
             }
 
@@ -521,14 +612,15 @@ function Delete-SpecificFolders {
             $foldersToCreate = @(
                 "$env:windir\Temp",
                 "$env:windir\Prefetch",
-                "$env:Temp",
+                "$env:TEMP",
                 "$env:AppData\Temp",
                 "$env:AppData\LocalLow\Temp",
                 "$env:AppData\Local\Microsoft\Windows\Caches"
             )
             foreach ($folder in $foldersToCreate) {
-                if (-not (Test-Path $folder)) {
-                    New-Item -Path $folder -ItemType Directory -Force | Out-Null
+                $expandedFolder = [Environment]::ExpandEnvironmentVariables($folder)
+                if (-not (Test-Path $expandedFolder)) {
+                    New-Item -Path $expandedFolder -ItemType Directory -Force | Out-Null
                 }
             }
         } catch {
@@ -575,18 +667,14 @@ function Delete-WindowsInstallerCache {
 function Delete-FilesInDrives {
     Start-Task -Message "> Deleting Files in Multiple Drives..." -Task {
         try {
-            # Exclude all drives except C:\
             $otherDrives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -ne "C:\" } | Select-Object -ExpandProperty Root
-
             if ($otherDrives.Count -eq 0) {
-                # No other drives found, skip cleaning
                 return
             }
 
             $filePatterns = @("*.log", "*.old", "*.tmp", "*._mp", "*.chk", "*.bak", "*.gid", "*.trace")
             foreach ($drive in $otherDrives) {
                 foreach ($pattern in $filePatterns) {
-                    # Use wildcard to search recursively
                     Get-ChildItem -Path "$drive" -Filter $pattern -Recurse -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
                 }
             }
@@ -614,11 +702,8 @@ function Delete-JunkFiles {
 function Delete-TempAndCacheFolders {
     Start-Task -Message "> Deleting Temporary and Cache Folders..." -Task {
         try {
-            # Exclude all drives except C:\
             $otherDrives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -ne "C:\" } | Select-Object -ExpandProperty Root
-
             if ($otherDrives.Count -eq 0) {
-                # No other drives found, skip cleaning
                 return
             }
 
@@ -626,42 +711,6 @@ function Delete-TempAndCacheFolders {
                 Get-ChildItem -Path $drive -Directory -Recurse -ErrorAction SilentlyContinue | Where-Object {
                     $_.Name -ieq "temp" -or $_.Name -ieq "cache"
                 } | ForEach-Object {
-                    Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
-                }
-            }
-        } catch {
-            # Suppress errors
-        }
-    }
-}
-
-# Function to delete memory dump files
-function Clear-MemoryDumpFiles {
-    Start-Task -Message "> Clearing Memory Dump Files..." -Task {
-        try {
-            $dumpPaths = @(
-                "$env:windir\Minidump\*",
-                "$env:windir\Memory.dmp"
-            )
-            foreach ($path in $dumpPaths) {
-                Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
-            }
-        } catch {
-            # Suppress errors
-        }
-    }
-}
-
-# Function to clean up installed application leftovers
-function Clean-Up-InstalledApplicationLeftovers {
-    Start-Task -Message "> Cleaning Up Installed Application Leftovers..." -Task {
-        try {
-            $appPaths = @(
-                "$env:ProgramFiles\*\AppData",
-                "$env:ProgramFiles(x86)\*\AppData"
-            )
-            foreach ($path in $appPaths) {
-                Get-ChildItem -Path $path -Directory -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
                     Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
                 }
             }
@@ -724,105 +773,109 @@ function Main {
     Print-FreeSpace -Label "Initial Disk Space" -FreeSpace $initialFreeSpace
 
     # Define and execute cleanup tasks
-    # 1. Clear Browser Caches
+
+    # Clear Browser Caches
     Clear-BrowserCaches
 
-    # 2. Clean Anti-Cheat Logs
+    # Clean Anti-Cheat Logs
     Clean-AntiCheatLogs
 
-    # 3. Remove Windows Update Cache
+    # Remove Windows Update Cache
     Remove-WindowsUpdateCache
 
-    # 4. Clean Up the WinSxS Folder
+    # Clean Up the WinSxS Folder (Basic)
     Clean-WinSxS
 
-    # 5. Delete Prefetch Files
+    # Advanced DISM Cleanup (StartComponentCleanup, ResetBase, SPSuperseded)
+    Advanced-DISM-Cleanup
+
+    # Delete Prefetch Files
     Delete-PrefetchFiles
 
-    # 6. Remove Temporary Internet Files
+    # Remove Temporary Internet Files
     Remove-TemporaryInternetFiles
 
-    # 7. Clear Thumbnail Cache
+    # Clear Thumbnail Cache
     Clear-ThumbnailCache
 
-    # 8. Clear SoftwareDistribution and Catroot2 Folders
+    # Clear SoftwareDistribution and Catroot2 Folders
     Clear-SoftwareDistributionAndCatroot2
 
-    # 9. Delete Temporary Files from All User Profiles
+    # Delete Temporary Files from All User Profiles
     Delete-TempFilesAllUsers
 
-    # 10. Clear Windows Store Cache (Manually without wsreset.exe)
+    # Clear Windows Store Cache
     Clear-WindowsStoreCache
 
-    # 11. Delete Old Log Files
+    # Delete Old Log Files
     Delete-OldLogFiles
 
-    # 12. Remove Old Windows Backup Files
+    # Remove Old Windows Backup Files (Windows.old)
     Remove-WindowsBackupFiles
 
-    # 13. Clear Recycle Bin for All Users
+    # Remove Upgrade Folders ($Windows.~BT, $Windows.~WS)
+    Remove-UpgradeFolders
+
+    # Clear WER (Windows Error Reporting) Reports
+    Clear-WERReports
+
+    # Clear environment-based temp folders (including %temp%, temp)
+    Clear-EnvTempFolders
+
+    # Clear Recycle Bin for All Users
     Clear-RecycleBinAllUsers
 
-    # 14. Clear Event Logs Comprehensively
+    # Clear Event Logs Comprehensively
     Clear-EventLogsComprehensively
 
-    # 15. Clear DNS Cache
+    # Clear DNS Cache
     Clear-DNSCacheCustom
 
-    # 16. Restart Windows Update Services
-    Stop-Start-Services
-
-    # 17. Run Disk Cleanup
+    # Run Disk Cleanup
     Run-DiskCleanup
 
-    # 18. Perform Storage Optimization
+    # Perform Storage Optimization
     Perform-StorageOptimization
 
-    # 20. Delete Specific File Types
+    # Delete Specific File Types
     Delete-SpecificFileTypes
 
-    # 21. Delete Specific Folders
+    # Delete Specific Folders
     Delete-SpecificFolders
 
-    # 22. Delete Driver Installation Files
+    # Delete Driver Installation Files
     Delete-DriverInstallFiles
 
-    # 23. Delete Windows Installer Cache
+    # Delete Windows Installer Cache
     Delete-WindowsInstallerCache
 
-    # 24. Delete Files in Multiple Drives
+    # Delete Files in Multiple Drives
     Delete-FilesInDrives
 
-    # 25. Delete Junk Files
+    # Delete Junk Files
     Delete-JunkFiles
 
-    # 26. Delete Temporary and Cache Folders
+    # Delete Temporary and Cache Folders
     Delete-TempAndCacheFolders
 
-    # 27. Clear Memory Dump Files
+    # Clear Memory Dump Files
     Clear-MemoryDumpFiles
 
-    # 28. Clean Up Installed Application Leftovers
+    # Clean Up Installed Application Leftovers
     Clean-Up-InstalledApplicationLeftovers
 
-    # 29. Clear Shadow Copies
+    # Clear Shadow Copies
     Clear-ShadowCopies
 
-    # 30. Remove Hibernation
+    # Remove Hibernation
     Remove-Hibernation
+
+    # Extra Cleanup Pass
+    Extra-BinCleanup
 
     # Get and display final free disk space
     $finalFreeSpace = Get-FreeDiskSpace
     Print-FreeSpace -Label "Final Disk Space" -FreeSpace $finalFreeSpace
-
-    # Calculate and display freed up space
-    $freedSpace = $initialFreeSpace - $finalFreeSpace
-    if ($freedSpace -ge 0) {
-        $formattedFreedSpace = Format-Bytes -Bytes $freedSpace
-        Write-Host "Freed up space: $formattedFreedSpace"
-    } else {
-        Write-Host "Freed up space: 0 Bytes (No additional space freed)"
-    }
 
     Write-Host "Cleanup ran successfully!"
 
