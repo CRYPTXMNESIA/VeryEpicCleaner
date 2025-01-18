@@ -254,27 +254,6 @@ function Clear-BrowserCaches {
     }
 }
 
-# Function to clean logs of popular anti-cheat programs
-function Clean-AntiCheatLogs {
-    Start-Task -Message "> Cleaning Anti-Cheat Program Logs..." -Task {
-        try {
-            $antiCheatLogPaths = @(
-                "$env:ProgramData\BattleEye\*",
-                "$env:ProgramData\EasyAntiCheat\*",
-                "$env:ProgramData\Valve\Steam\logs\*",
-                "$env:ProgramData\PunkBuster\*",
-                "$env:LocalAppData\Epic\EpicGamesLauncher\Saved\Logs\*",
-                "$env:LocalAppData\Steam\logs\*"
-            )
-            foreach ($path in $antiCheatLogPaths) {
-                Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
-            }
-        } catch {
-            # Suppress errors
-        }
-    }
-}
-
 # Function to remove Windows Update Cache
 function Remove-WindowsUpdateCache {
     Start-Task -Message "> Removing Windows Update Cache..." -Task {
@@ -473,8 +452,6 @@ function Clear-EnvTempFolders {
             $tempPaths = @(
                 "$env:TEMP\*",
                 "$env:TMP\*",
-                "%TEMP%\*",
-                "%TMP%\*",
                 "$env:windir\Temp\*",
                 "$env:LOCALAPPDATA\Temp\*",
                 "$env:USERPROFILE\AppData\Local\Temp\*"
@@ -580,7 +557,7 @@ function Delete-SpecificFileTypes {
             foreach ($path in $searchPaths) {
                 foreach ($pattern in $filePatterns) {
                     $expanded = [Environment]::ExpandEnvironmentVariables($path)
-                    Remove-Item -Path "$expanded\$pattern" -Recurse -Force -ErrorAction SilentlyContinue
+                    Remove-Item -Path "$expanded\$pattern" -Force -ErrorAction SilentlyContinue
                 }
             }
         } catch {
@@ -663,27 +640,6 @@ function Delete-WindowsInstallerCache {
     }
 }
 
-# Function to delete specific files in multiple drives
-function Delete-FilesInDrives {
-    Start-Task -Message "> Deleting Files in Multiple Drives..." -Task {
-        try {
-            $otherDrives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -ne "C:\" } | Select-Object -ExpandProperty Root
-            if ($otherDrives.Count -eq 0) {
-                return
-            }
-
-            $filePatterns = @("*.log", "*.old", "*.tmp", "*._mp", "*.chk", "*.bak", "*.gid", "*.trace")
-            foreach ($drive in $otherDrives) {
-                foreach ($pattern in $filePatterns) {
-                    Get-ChildItem -Path "$drive" -Filter $pattern -Recurse -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-                }
-            }
-        } catch {
-            # Suppress errors
-        }
-    }
-}
-
 # Function to delete junk files using wildcard patterns
 function Delete-JunkFiles {
     Start-Task -Message "> Deleting Junk Files..." -Task {
@@ -720,7 +676,25 @@ function Delete-TempAndCacheFolders {
     }
 }
 
-# Function to clear shadow copies
+# **New Function: Clear Cache Folders Across the System**
+function Clear-CacheFolders {
+    Start-Task -Message "> Clearing Cache Folders..." -Task {
+        try {
+            # Search for all folders named 'Cache' starting from the root of each drive
+            $drives = Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Root
+            foreach ($drive in $drives) {
+                Get-ChildItem -Path $drive -Directory -Recurse -ErrorAction SilentlyContinue -Force | Where-Object { $_.Name -ieq "Cache" } | ForEach-Object {
+                    # Delete all files within the Cache folder without using -Recurse for faster deletion
+                    Get-ChildItem -Path $_.FullName -File -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+                }
+            }
+        } catch {
+            # Suppress errors
+        }
+    }
+}
+
+# Function to delete shadow copies
 function Clear-ShadowCopies {
     Start-Task -Message "> Clearing Shadow Copies..." -Task {
         try {
@@ -741,6 +715,9 @@ function Remove-Hibernation {
         }
     }
 }
+
+# Function to delete specific files in multiple drives
+# (Removed as per user request)
 
 # Main Execution Flow
 function Main {
@@ -776,9 +753,6 @@ function Main {
 
     # Clear Browser Caches
     Clear-BrowserCaches
-
-    # Clean Anti-Cheat Logs
-    Clean-AntiCheatLogs
 
     # Remove Windows Update Cache
     Remove-WindowsUpdateCache
@@ -849,14 +823,14 @@ function Main {
     # Delete Windows Installer Cache
     Delete-WindowsInstallerCache
 
-    # Delete Files in Multiple Drives
-    Delete-FilesInDrives
-
     # Delete Junk Files
     Delete-JunkFiles
 
     # Delete Temporary and Cache Folders
     Delete-TempAndCacheFolders
+
+    # **Execute the New Cache Folders Cleanup**
+    Clear-CacheFolders
 
     # Clear Memory Dump Files
     Clear-MemoryDumpFiles
